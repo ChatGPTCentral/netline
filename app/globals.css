@@ -7,3 +7,7 @@
 body {
   margin: 0;
 }
+
+/* Hide scrollbars on horizontal scroll rows */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
