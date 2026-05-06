@@ -13,10 +13,10 @@ body {
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
 @keyframes neonShift {
-  0%   { box-shadow: 0 0 8px 2px rgba(0,210,255,0.55), 0 0 20px 4px rgba(0,210,255,0.25); border-color: rgba(0,210,255,0.7); }
-  33%  { box-shadow: 0 0 8px 2px rgba(140,80,255,0.55), 0 0 20px 4px rgba(140,80,255,0.25); border-color: rgba(140,80,255,0.7); }
-  66%  { box-shadow: 0 0 8px 2px rgba(0,120,255,0.55), 0 0 20px 4px rgba(0,120,255,0.25); border-color: rgba(0,120,255,0.7); }
-  100% { box-shadow: 0 0 8px 2px rgba(0,210,255,0.55), 0 0 20px 4px rgba(0,210,255,0.25); border-color: rgba(0,210,255,0.7); }
+  0%   { box-shadow: 0 0 0 2px rgba(0,200,255,0.85), 0 0 18px 5px rgba(0,200,255,0.28); }
+  33%  { box-shadow: 0 0 0 2px rgba(155,60,255,0.85), 0 0 18px 5px rgba(155,60,255,0.28); }
+  66%  { box-shadow: 0 0 0 2px rgba(20,110,255,0.85), 0 0 18px 5px rgba(20,110,255,0.28); }
+  100% { box-shadow: 0 0 0 2px rgba(0,200,255,0.85), 0 0 18px 5px rgba(0,200,255,0.28); }
 }
 
 .neon-island {

@@ -15,10 +15,90 @@ const SECTIONS = [
   { label: 'White Papers', type: 'White Paper' },
 ];
 
-const MOST_SEARCHED = [
-  'ChatGPT prompts', 'Claude AI', 'Canva AI', 'automation',
-  'marketing AI', 'GPT-5', 'productivity', 'cybersecurity',
-];
+const DISPLAY_NAMES: Record<string, string> = {
+  'ai':           'AI',
+  'chatgpt':      'ChatGPT',
+  'prompts':      'Prompts',
+  'tools':        'Tools',
+  'gpt':          'GPT',
+  'marketers':    'Marketers',
+  'content':      'Content',
+  'creators':     'Creators',
+  'workflow':     'Workflow',
+  'engineering':  'Engineering',
+  'productivity': 'Productivity',
+  'design':       'Design',
+  'claude':       'Claude',
+  'business':     'Business',
+  'sales':        'Sales',
+  'automation':   'Automation',
+  'linkedin':     'LinkedIn',
+  'templates':    'Templates',
+  'presentations':'Presentations',
+  'research':     'Research',
+  'skills':       'Skills',
+  'brand':        'Brand',
+  'growth':       'Growth',
+  'video':        'Video',
+};
+
+const STOP = new Set([
+  'to','in','by','of','on','at','or','it','is','be','do','an','so','if','as',
+  'up','go','my','no','we','me','us','am','pm','vs','re',
+  'the','and','for','are','but','not','you','all','can','was','our','out',
+  'use','get','has','how','its','may','new','now','see','two','way','who',
+  'did','too','what','with','this','that','from','they','have','will','your',
+  'when','more','each','most','into','also','been','than','then','them','some',
+  'only','make','like','time','just','know','take','good','year','come','over',
+  'here','well','need','free','best','help','work','even','back','any','first',
+  'these','those','would','there','their','about','which','could','other','after',
+  'every','using','being','such','both','should','right','where','much','before',
+  'never','today','while','often','still','must','want','find','many','does',
+  'done','used','ebook','paper','book','white','based','real','learn','ways',
+  'list','things','across','within','below','above','around','own','few',
+  'say','per','put','set','got','had','his','him','her','via','non','yet','nor',
+  'off','let','due','ago','try','run','end','big','old','lot','far','low','pay',
+  'ask','day','sub','pro','pre','tips','guide','guides','report','resource',
+  'download','click','read','access','discover','explore','complete','ultimate',
+  'essential','powerful','effective','comprehensive','approach','solution',
+  'platform','service','one','three','ten','five','top','key','type',
+  'value','limited','high','lead','fast','smart','simple','easy','quick',
+  'whether','without','including','between','through','during','number','point',
+  'areas','fact','part','keep','grow','build','drive','boost','create','improve',
+  'turn','ready','unlock','leverage','master','understand','avoid','achieve',
+  'develop','show','give','look','step','think','start','begin','along',
+  'faster','better','smarter','perfect','proven','powered','practical','results',
+  'leading','produce','easily','written','process','four','six','seven','eight',
+  'nine','ideas','minutes','hours','steps','outputs','polished','expert',
+  'scale','voice','teams','decks','save','professionals','prompt',
+]);
+
+function computeTopKeywords(resources: Resource[]): string[] {
+  const freq = new Map<string, number>();
+  for (const r of resources) {
+    const text = `${r.title} ${r.shortDescription}`.toLowerCase();
+    const words = new Set((text.match(/\b[a-z]{2,}\b/g) ?? []));
+    for (const w of words) {
+      if (!STOP.has(w)) freq.set(w, (freq.get(w) ?? 0) + 1);
+    }
+  }
+  const candidates = Array.from(freq.entries())
+    .filter(([, c]) => c >= 7)
+    .sort((a, b) => b[1] - a[1])
+    .map(([w]) => w);
+
+  // Remove singular when its plural is also present (e.g. "workflow" if "workflows" exists)
+  const candidateSet = new Set(candidates);
+  return candidates
+    .filter(w => !candidateSet.has(w + 's') && !candidateSet.has(w + 'es'))
+    .slice(0, 15);
+}
+
+function fmt(word: string): string {
+  return DISPLAY_NAMES[word] ?? (word.charAt(0).toUpperCase() + word.slice(1));
+}
+
+// ─── Intent detection ─────────────────────────────────────────────────────────
 
 const INTENT_MAP: Record<string, string> = {
   'chatgpt': 'AI assistant guides',
@@ -31,6 +111,10 @@ const INTENT_MAP: Record<string, string> = {
   'data':    'data & analytics',
   'prompt':  'prompt engineering',
   'llm':     'large language models',
+  'sale':    'sales enablement',
+  'design':  'design resources',
+  'video':   'video creation',
+  'brand':   'brand building',
 };
 
 function detectIntent(q: string): string | null {
@@ -41,167 +125,66 @@ function detectIntent(q: string): string | null {
   return null;
 }
 
-// ─── Dynamic Island Search ────────────────────────────────────────────────────
+// ─── Search Bar ───────────────────────────────────────────────────────────────
 
-function DynamicIslandSearch({
+function SearchBar({
   query,
   onQueryChange,
+  onSaveSearch,
 }: {
   query: string;
   onQueryChange: (v: string) => void;
+  onSaveSearch: (v: string) => void;
 }) {
-  const [focused, setFocused] = useState(false);
-  const [savedSearches, setSavedSearches] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('ai_saved_searches') ?? '[]');
-      if (Array.isArray(stored)) setSavedSearches(stored);
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setFocused(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
-
-  function saveSearch(term: string) {
-    if (!term.trim() || savedSearches.includes(term)) return;
-    const updated = [term, ...savedSearches].slice(0, 8);
-    setSavedSearches(updated);
-    localStorage.setItem('ai_saved_searches', JSON.stringify(updated));
-  }
-
-  function removeSaved(term: string) {
-    const updated = savedSearches.filter((s) => s !== term);
-    setSavedSearches(updated);
-    localStorage.setItem('ai_saved_searches', JSON.stringify(updated));
-  }
-
-  function applyTerm(term: string) {
-    onQueryChange(term);
-    saveSearch(term);
-    setFocused(false);
-    inputRef.current?.blur();
-  }
-
   const intent = query.length > 1 ? detectIntent(query) : null;
-  const showDropdown = focused && (savedSearches.length > 0 || MOST_SEARCHED.length > 0);
 
   return (
-    <div ref={containerRef} className="relative w-full">
-      {/* Island pill */}
-      <div
-        className={`relative flex items-center transition-all duration-300 ${focused ? 'neon-island' : ''}`}
-        style={{
-          backgroundColor: '#111',
-          borderRadius: 999,
-          border: focused ? '1.5px solid rgba(0,210,255,0.7)' : '1.5px solid rgba(255,255,255,0.08)',
-          padding: focused ? '10px 16px' : '8px 14px',
+    <div
+      className="neon-island relative flex items-center gap-2"
+      style={{
+        background: '#ffffff',
+        borderRadius: 999,
+        padding: '9px 14px',
+        border: 'none',
+      }}
+    >
+      <svg className="flex-shrink-0 w-3.5 h-3.5" style={{ color: '#aaa' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+        <circle cx="11" cy="11" r="8" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35" />
+      </svg>
+
+      <input
+        ref={inputRef}
+        type="text"
+        value={query}
+        onChange={(e) => onQueryChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && query.trim()) {
+            onSaveSearch(query.trim());
+            inputRef.current?.blur();
+          }
         }}
-      >
-        {/* Search icon */}
-        <svg className="flex-shrink-0 w-3.5 h-3.5 mr-2.5" style={{ color: focused ? '#00d2ff' : '#555' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-          <circle cx="11" cy="11" r="8" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35" />
-        </svg>
+        placeholder="Search resources…"
+        className="flex-1 bg-transparent focus:outline-none text-[13px] placeholder-[#aaa]"
+        style={{ color: '#1d1d1f' }}
+      />
 
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          onFocus={() => setFocused(true)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && query.trim()) {
-              saveSearch(query.trim());
-              setFocused(false);
-              inputRef.current?.blur();
-            }
-          }}
-          placeholder="Search resources…"
-          className="flex-1 bg-transparent focus:outline-none text-[13px] placeholder-[#444]"
-          style={{ color: '#eee' }}
-        />
-
-        {/* Intent badge */}
-        {intent && (
-          <span
-            className="ml-2 text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
-            style={{ background: 'rgba(0,210,255,0.15)', color: '#00d2ff', border: '1px solid rgba(0,210,255,0.3)' }}
-          >
-            {intent}
-          </span>
-        )}
-
-        {/* Clear */}
-        {query && (
-          <button
-            onClick={() => { onQueryChange(''); inputRef.current?.focus(); }}
-            className="ml-2 flex-shrink-0"
-            style={{ color: '#555' }}
-          >
-            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z" />
-            </svg>
-          </button>
-        )}
-      </div>
-
-      {/* Dropdown */}
-      {showDropdown && (
-        <div
-          className="absolute left-0 right-0 mt-2 z-50 flex flex-col gap-4 px-4 py-4"
-          style={{
-            backgroundColor: '#111',
-            borderRadius: 20,
-            border: '1.5px solid rgba(255,255,255,0.08)',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-          }}
+      {intent && (
+        <span
+          className="flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full"
+          style={{ background: 'rgba(0,180,255,0.1)', color: '#0090cc', border: '1px solid rgba(0,180,255,0.25)' }}
         >
-          {/* Saved searches */}
-          {savedSearches.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#555' }}>Saved</span>
-              <div className="flex flex-wrap gap-1.5">
-                {savedSearches.map((s) => (
-                  <div key={s} className="flex items-center gap-1 rounded-full px-2.5 py-1" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    <button onClick={() => applyTerm(s)} className="text-[11px] font-medium" style={{ color: '#ccc' }}>{s}</button>
-                    <button onClick={() => removeSaved(s)} className="ml-0.5" style={{ color: '#444' }}>
-                      <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {intent}
+        </span>
+      )}
 
-          {/* Most searched */}
-          <div className="flex flex-col gap-2">
-            <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#555' }}>Most Searched</span>
-            <div className="flex flex-wrap gap-1.5">
-              {MOST_SEARCHED.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => applyTerm(s)}
-                  className="text-[11px] font-medium px-2.5 py-1 rounded-full transition-all duration-150"
-                  style={{ background: 'rgba(0,210,255,0.08)', color: '#00d2ff', border: '1px solid rgba(0,210,255,0.2)' }}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+      {query && (
+        <button onClick={() => { onQueryChange(''); inputRef.current?.focus(); }} className="flex-shrink-0" style={{ color: '#bbb' }}>
+          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z" />
+          </svg>
+        </button>
       )}
     </div>
   );
@@ -289,6 +272,16 @@ function Section({ label, books, onSeeAll }: { label: string; books: Resource[];
 export default function ResourceLibrary({ resources }: { resources: Resource[] }) {
   const [query, setQuery] = useState('');
   const [activeType, setActiveType] = useState('All');
+  const [savedSearches, setSavedSearches] = useState<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('ai_saved_searches') ?? '[]');
+      if (Array.isArray(stored)) setSavedSearches(stored);
+    } catch {}
+  }, []);
+
+  const topKeywords = useMemo(() => computeTopKeywords(resources), [resources]);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
@@ -302,6 +295,24 @@ export default function ResourceLibrary({ resources }: { resources: Resource[] }
 
   const isFiltering = query.length > 0 || activeType !== 'All';
 
+  function saveSearch(term: string) {
+    if (!term.trim() || savedSearches.includes(term)) return;
+    const updated = [term, ...savedSearches].slice(0, 8);
+    setSavedSearches(updated);
+    localStorage.setItem('ai_saved_searches', JSON.stringify(updated));
+  }
+
+  function removeSaved(term: string) {
+    const updated = savedSearches.filter((s) => s !== term);
+    setSavedSearches(updated);
+    localStorage.setItem('ai_saved_searches', JSON.stringify(updated));
+  }
+
+  function applyChip(label: string) {
+    setQuery(label);
+    saveSearch(label);
+  }
+
   return (
     <div className="min-h-screen font-sans" style={{ backgroundColor: '#F5F5F7' }}>
 
@@ -309,14 +320,66 @@ export default function ResourceLibrary({ resources }: { resources: Resource[] }
       <div
         className="sticky top-0 z-20 px-5 pt-4 pb-3 flex flex-col gap-3"
         style={{
-          backgroundColor: 'rgba(245,245,247,0.85)',
+          backgroundColor: 'rgba(245,245,247,0.88)',
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
           borderBottom: '1px solid rgba(0,0,0,0.06)',
         }}
       >
-        {/* Dynamic Island Search */}
-        <DynamicIslandSearch query={query} onQueryChange={setQuery} />
+        {/* Search bar */}
+        <SearchBar query={query} onQueryChange={setQuery} onSaveSearch={saveSearch} />
+
+        {/* Keyword chips — below the bar, horizontally scrollable */}
+        <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-5 px-5">
+          {/* Saved searches */}
+          {savedSearches.map((s) => (
+            <div
+              key={`saved-${s}`}
+              className="flex items-center gap-1 flex-shrink-0 rounded-full px-3 py-1"
+              style={{ background: 'rgba(228,135,21,0.12)', border: '1px solid rgba(228,135,21,0.3)' }}
+            >
+              <button
+                onClick={() => applyChip(s)}
+                className="text-[11px] font-semibold whitespace-nowrap"
+                style={{ color: '#c27010' }}
+              >
+                {s}
+              </button>
+              <button
+                onClick={() => removeSaved(s)}
+                className="flex-shrink-0 ml-0.5"
+                style={{ color: '#c2701066' }}
+              >
+                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                </svg>
+              </button>
+            </div>
+          ))}
+
+          {/* Smart keyword suggestions */}
+          {topKeywords.map((kw) => {
+            const label = fmt(kw);
+            return (
+              <button
+                key={kw}
+                onClick={() => applyChip(label)}
+                className="flex-shrink-0 text-[11px] font-semibold px-3 py-1 rounded-full whitespace-nowrap transition-colors duration-150"
+                style={{
+                  background: query.toLowerCase() === kw || query === label
+                    ? 'rgba(0,160,255,0.18)'
+                    : 'rgba(0,0,0,0.05)',
+                  color: query.toLowerCase() === kw || query === label ? '#0080cc' : '#444',
+                  border: query.toLowerCase() === kw || query === label
+                    ? '1px solid rgba(0,160,255,0.35)'
+                    : '1px solid transparent',
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
 
         {/* Type pills */}
         <div className="flex gap-2">
